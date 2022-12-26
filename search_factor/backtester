@@ -1,0 +1,116 @@
+#%%
+import imp
+from re import L
+from vnpy.trader.optimize import OptimizationSetting
+from vnpy_ctastrategy.backtesting import BacktestingEngine
+from strategies.factorstrategy import FactorStrategy
+from datetime import datetime
+from datas_process.m_futures_factors import SymbolsInfo
+import sys, os
+import pandas as pd
+__Author__ = 'ZCXY'
+import matplotlib.pyplot as plt
+from m_base import Logger
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 解决中文显示
+plt.rcParams['axes.unicode_minus'] = False  # 解决符号无法显示
+sys.path.append('..')
+sys.stdout = Logger('{pa_prefix}/datas/backtest_res/log.txt')
+print(str(datetime.now()), '-------------------------------')
+
+class BackTester():
+    def __init__(self, startdate=datetime(2020, 1, 4), enddate=datetime(2022, 3, 30)):
+        self.startdate = startdate
+        self.enddate = enddate
+        self.sig_meth = 1
+        self.res_pa = f'{pa_prefix}/datas/backtest_res/'
+        self.syinfo = SymbolsInfo()
+        self.contract_rate = self.syinfo.contract_rate
+        self.df_symbols_all = self.syinfo.df_symbols_all
+
+        if not os.path.exists(self.res_pa):
+            os.makedirs(self.res_pa)
+
+    def get_backtest_params(self, symbol):
+        '''获取回测合约参数'''
+        contract = self.contract_rate[self.contract_rate[' 合约代码']==symbol]
+        symbol_info = self.df_symbols_all[self.df_symbols_all['symbol']==symbol]
+        price = symbol_info['price'].iloc[0]
+        pricetick = symbol_info['pricetick'].iloc[0]
+        size = symbol_info['size'].iloc[0]
+        cr1 = contract[' 开仓手续费(按手数)'].iloc[0]
+        cr2 = contract[' 开仓手续费(按金额)'].iloc[0]
+        rate = cr2 if cr1 == 0 else cr1 / (price*pricetick)
+        hand = int(300_000 / (price*size*0.15))
+        hand = hand if hand > 0 else 1
+        return rate, pricetick, size, hand
+
+    def backtesting(self, symbol, pa=None):
+        '''跑回测'''
+        rate, pricetick, size, hand = self.get_backtest_params(symbol)
+        print(symbol, 'rate', 'pricetick', 'size', 'hand', rate, pricetick, size, hand)
+        engine = BacktestingEngine()
+        engine.set_parameters(
+            vt_symbol=f"{symbol}88.LOCAL",
+            interval="1m",
+            start=self.startdate,
+            end=self.enddate,
+            rate=rate,
+            slippage=pricetick,
+            size=size,
+            pricetick=pricetick,
+            capital=1_000_000,
+        )
+        params = {'hand': hand, 'symbol_name': symbol, 'y_pred': 'y_pred', 'sig_meth': self.sig_meth}
+        engine.add_strategy(FactorStrategy, params)
+
+        engine.load_data()
+        engine.run_backtesting()
+        df = engine.calculate_result()
+        res = engine.calculate_statistics()
+        # engine.show_chart()
+
+        res.update({'symbol': symbol})
+        
+        if pa == None:
+            pa = self.res_pa
+        ax = pd.DataFrame(df["balance"]).plot()
+        fig = ax.get_figure()
+        fig.savefig(pa+symbol+str(self.sig_meth)+'.png')
+        plt.close()
+
+        # setting = OptimizationSetting()
+        # setting.set_target("sharpe_ratio")
+        # setting.add_parameter("atr_length", 25, 27, 1)
+        # setting.add_parameter("atr_ma_length", 10, 30, 10)
+
+        # engine.run_ga_optimization(setting)
+        # engine.run_bf_optimization(setting)
+
+        del engine
+        return res
+
+
+    def backtesting_all(self, pa=None):
+        '''单进程回测所有品种'''
+        res = []
+        for symbol in self.df_symbols_all['symbol']:
+            print('begin: ', symbol)
+            res.append(self.backtesting(symbol))
+            print('done: ', symbol)
+        df_res = pd.DataFrame(res)
+        if pa == None:
+            pa = self.res_pa
+        df_res.to_csv(pa+'res_all'+str(self.sig_meth)+'.csv')
+
+    def multiprocess_backtesting():
+        '''多进程跑回测'''
+        pass
+
+
+if __name__ == "__main__":
+    s = BackTester()
+    s.backtesting_all()
+    # s.backtesting('RB')
+
+
+# %%
