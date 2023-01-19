@@ -961,19 +961,7 @@ class DataProcessML(BaseDataProcess):
             k = y_thread[1]
             need_mean = y_thread[2]
             y_method = y_thread[3]
-            if y_method == 0:
-                y_std = df.rolling(n).std().shift(1)
-                y = np.ones(len(y_std))
-                y_mean = df.rolling(n).mean().shift(1) if need_mean else 0
-                y = np.where((df>y_mean+k*y_std) & (df>0), 2, y)
-                y = np.where((df<y_mean-k*y_std) & (df<0), 0, y)
-            elif y_method == 1:
-                y_std = df.rolling(n).std().shift(1)
-                y = np.ones(len(y_std))
-                y_mean = df.rolling(n).mean().shift(1) if need_mean else 0
-                y = np.where(df>abs(y_mean+k*y_std), 2, y)
-                y = np.where(df<-abs(y_mean+k*y_std), 0, y)
-            elif y_method == 2:
+            if y_method == 2:
                 y_std = df.shift(-1).rolling(n).std().shift(-n)
                 y = np.ones(len(y_std))
                 y_mean = df.shift(-1).rolling(n).mean().shift(-n) if need_mean else 0
